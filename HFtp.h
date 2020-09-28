@@ -4,12 +4,19 @@
 #include <QObject>
 #include <QHostAddress>
 #include "QTcpSocket"
+#include "QTcpServer"
 #include <array>
-#include "QFTP\qurlinfo.h"
+//#include "QFTP\qurlinfo.h"
 
 class QNetworkAccessManager;
-
-class HIQTWIDGET_EXPORT HFtp : public QTcpSocket
+struct QUrlInfo
+{
+	QString name;
+	bool isDir = false;
+	int access = 0;
+};
+class QIODevice;
+class HIQTWIDGET_EXPORT HFtp : public QObject
 {
 	Q_OBJECT
 public:
@@ -19,14 +26,10 @@ public:
 		image = 'I'
 	};
 
-	enum accesstype
+	enum connmode
 	{
-		dir = 1,
-		dirverbose,
-		fileread,
-		filewrite,
-		filereadappend,
-		filewriteappend
+		pasv = 1,
+		port
 	};
 
 	HFtp(QObject *parent = nullptr);
@@ -35,23 +38,34 @@ public:
 	bool connectFTP(QString address, short port = 21);
 	bool connectFTP(QHostAddress address, short port = 21);
 
-	QList<QUrlInfo> list(QString path);
 	bool login(QString username, QString password);
+	bool reset(size_t offset);
+
+	QList<QUrlInfo> LIST(QString path);
+	QList<QUrlInfo> NLST(QString path);
 
 protected:
 	bool sendCMD(QString buffer,char expect);
 	bool readresp(char expect);
 
-	void FtpAccess(QIODevice* iofile, accesstype type, transfermode mode);
+	QTcpSocket* FtpOpenPasv(QString cmd, transfermode mode);
+	QTcpSocket* FtpOpenPort(QString cmd, transfermode mode);
 
+	QTcpSocket* FtpAccess(QString cmd, transfermode mode);
+	size_t FtpAccessRead(QString cmd, transfermode mode, QIODevice* iofile);
+	size_t FtpAccessWrite(QString cmd, transfermode mode, QIODevice* iofile);
+
+	QString toString(const QByteArray& content);
+	QByteArray toByte(const QString& content);
 
 protected:
 	QString m_username;
 	QString m_password;
 	short m_port;
 	QHostAddress m_address;
-	std::array<char, 3> m_response;
-
+	QByteArray m_response;
+	QTextCodec* m_code;
+	size_t m_offset = 0;
+	connmode m_connmode = pasv;
 	QScopedPointer<QTcpSocket> m_socket;	//用于命令执行
-	QScopedPointer<QNetworkAccessManager> m_networkManager;//用于下载ftp文件
 };
