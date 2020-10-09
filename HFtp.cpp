@@ -47,7 +47,7 @@ bool HFtp::connectFTP(QHostAddress address, short port /*= 21*/)
 	return false;
 }
 
-QList<QUrlInfo> HFtp::LIST(QString path)
+QList<QUrlInfo> HFtp::list(QString path)
 {
 	QBuffer buffer;
 	buffer.open(QBuffer::ReadWrite);
@@ -114,7 +114,7 @@ QList<QUrlInfo> HFtp::LIST(QString path)
 	return std::move(ret);
 }
 
-QList<QUrlInfo> HFtp::NLST(QString path)
+QList<QUrlInfo> HFtp::nlst(QString path)
 {
 	QBuffer buffer;
 	buffer.open(QIODevice::ReadWrite);
@@ -141,13 +141,33 @@ QList<QUrlInfo> HFtp::NLST(QString path)
 	return{};
 }
 
-size_t HFtp::SIZE(QString file)
+size_t HFtp::size(QString file)
 {
 	if (sendCMD("SIZE " + file, '2'))
 	{
 		return toString(m_response.mid(3)).toULongLong();
 	}
 	return 0;
+}
+
+size_t HFtp::get(QString remoteFile, QIODevice& outDevice)
+{
+	return FtpAccessRead("RETR " + remoteFile, transfermode::image, &outDevice)>0;
+}
+
+size_t HFtp::get(QString remoteFile, QString localFile)
+{
+	return get(remoteFile, QFile(localFile));
+}
+
+size_t HFtp::put(QIODevice& inDevice, QString remoteFile)
+{
+	return FtpAccessWrite("STOR " + remoteFile, transfermode::image, &inDevice);
+}
+
+size_t HFtp::put(QString localFile, QString remoteFile)
+{
+	return put(QFile(localFile), remoteFile);
 }
 
 bool HFtp::login(QString username, QString password)
@@ -170,12 +190,12 @@ bool HFtp::reset(size_t offset)
 	return sendCMD(QString("REST %1").arg(offset),'3');
 }
 
-bool HFtp::CWD(QString path)
+bool HFtp::cwd(QString path)
 {
 	return sendCMD("CWD " + path,'2');
 }
 
-QString HFtp::PWD()
+QString HFtp::pwd()
 {
 	if (!sendCMD("PWD", '2')) return{};
 
@@ -200,7 +220,10 @@ bool HFtp::writeCMD(QString buffer)
 {
 	m_response = {};
 	buffer += "\r\n\0";
-	auto iw = m_socket->write(buffer.toUtf8());
+	auto iw = m_socket->write(toByte(buffer));
+#ifdef _DEBUG
+	qDebug() <<"<-- "<< buffer.trimmed();
+#endif // _DEBUG
 	return iw > 0;
 }
 
@@ -236,7 +259,9 @@ bool HFtp::readresp(char expect)
 			m_response += response;
 		} while (!response.startsWith(code));
 	}
-
+#ifdef _DEBUG
+	qDebug() <<"--> "<< toString(m_response).trimmed();
+#endif // _DEBUG
 	return m_response[0] == expect;
 }
 
@@ -335,23 +360,45 @@ size_t HFtp::FtpAccessRead(QString cmd, transfermode mode, QIODevice* iofile)
 		auto byte = socket->readAll();
 		sum += iofile->write(byte);
 	}
-	return sum;
+
+	//接收结束命令
+	return readresp('2') ? sum : 0;
 }
 
 size_t HFtp::FtpAccessWrite(QString cmd, transfermode mode, QIODevice* iofile)
 {
 	if (iofile == nullptr)
 		return 0;
-	auto socket = FtpAccess(cmd, mode);
-	if (socket == nullptr)
-		return 0;
-	size_t sum = 0;
 
-	while (iofile->waitForReadyRead(30*1000))
+	if (!iofile->isOpen() && !iofile->open(QIODevice::ReadOnly))
+		return 0;
+
+	const int readUnit = 16 * 1024;
+	iofile->waitForReadyRead(30 * 1000);
+
+	auto readbuffer = iofile->read(readUnit);
+	if (readbuffer.isEmpty()) return 0;
+
+	size_t sum = 0;
 	{
-		sum += socket->write(iofile->read(10*1024*1024));
+		QScopedPointer<QTcpSocket> socket(FtpAccess(cmd, mode));
+		if (socket == nullptr)
+			return 0;
+
+		do
+		{
+			//对齐读取
+			auto writecount = socket->write(readbuffer);
+			if (writecount <= 0) return sum;
+			sum += writecount;
+			iofile->waitForReadyRead(30 * 1000);
+			readbuffer = iofile->read(readUnit);
+		} while (readbuffer.size());
+		socket->disconnected();
 	}
-	return sum;
+	
+	
+	return readresp('2') ? sum : 0;
 }
 
 void HFtp::updateFtpCode()

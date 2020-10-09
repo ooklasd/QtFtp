@@ -58,20 +58,28 @@ public:
 	bool login(QString username, QString password);
 	bool reset(size_t offset);
 
-	bool CWD(QString path = "/");
-	bool CDUP(){ return sendCMD("CDUP", '3'); }
-	bool MKD(QString path){ return sendCMD("MKD "+path, '3'); }
-	QString PWD();
+	bool cwd(QString path = "/");
+	bool cdup(){ return sendCMD("CDUP", '3'); }
+	bool mkd(QString path){ return sendCMD("MKD "+path, '2'); }
+	QString pwd();
 
-	bool DELE(QString file){ return sendCMD("DELE " + file, '3'); }
-	bool QUIT(){ return sendCMD("QUIT", '3'); }
-	bool REIN(){ return sendCMD("REIN", '3'); }
-	QList<QUrlInfo> LIST(QString path);
-	QList<QUrlInfo> NLST(QString path);
-	size_t SIZE(QString file);
+	bool dele(QString file){ return sendCMD("DELE " + file, '3'); }
+	bool quit(){ return sendCMD("QUIT", '3'); }
+	bool rein(){ return sendCMD("REIN", '3'); }
+	//获取详细列表
+	QList<QUrlInfo> list(QString path);
+	//获取名字列表
+	QList<QUrlInfo> nlst(QString path);
+	size_t size(QString file);
+	
+	size_t get(QString remoteFile, QIODevice& outDevice);
+	size_t get(QString remoteFile, QString localFile);
 
-	bool ABOR();
-	bool NOOP(){ return sendCMD("NOOP", 2); }
+	size_t put(QIODevice& inDevice, QString remoteFile);
+	size_t put(QString localFile, QString remoteFile);
+
+	bool abort();
+	bool noop(){ return sendCMD("NOOP", 2); }
 
 public:
 	//=======================================
