@@ -23,13 +23,13 @@ class HIQTWIDGET_EXPORT HFtp : public QObject
 {
 	Q_OBJECT
 public:
-	enum transfermode
+	enum TransferMode
 	{
 		ascii = 'A',
 		image = 'I'
 	};
 
-	enum connmode
+	enum ConnectMode
 	{
 		pasv = 1,
 		port
@@ -42,20 +42,21 @@ public:
 	bool connectFTP(QHostAddress address, short port = 21);
 
 	//是否已登录，有socket连接即登录
-	bool isLogin()const{ return !!getConnectSocket(); }
+	bool isLogin()const{ return _cmdSocket && _cmdSocket->isValid(); }
 
-	//获取当前正在连接的sockeet，断开连接即无登录
-	QTcpSocket* getConnectSocket()const{ return m_socket.data(); }
+	//获取当前正在连接的sockeet，断开连接即无登录，可用于绑定信号
+	QTcpSocket* getConnectSocket()const{ return _cmdSocket.data(); }
 
 	//校验上一次命令是否返回正确
 	bool isLastVaild(char expect) const{
-		return m_response.size() >= 3 ? (m_response.at(0) == expect) : false;
+		return _response.size() >= 3 ? (_response.at(0) == expect) : false;
 	}
 
 	//获取上一次命令的返回码
-	QString getLastCode()const{ return toString(m_response.mid(0, 3)); }
+	QString getLastCode()const{ return toString(_response.mid(0, 3)); }
 
 	bool login(QString username, QString password);
+	void logout(){ return quit(); }
 	bool reset(size_t offset);
 
 	bool cwd(QString path = "/");
@@ -64,7 +65,7 @@ public:
 	QString pwd();
 
 	bool dele(QString file){ return sendCMD("DELE " + file, '3'); }
-	bool quit(){ return sendCMD("QUIT", '3'); }
+	void quit();
 	bool rein(){ return sendCMD("REIN", '3'); }
 	//获取详细列表
 	QList<QUrlInfo> list(QString path);
@@ -81,25 +82,36 @@ public:
 	bool abort();
 	bool noop(){ return sendCMD("NOOP", 2); }
 
+	HFtp::ConnectMode getConnectMode() const { return _connectMode; }
+	void setConnectMode(HFtp::ConnectMode val) { _connectMode = val; }
 public:
 	//=======================================
 	// 可以调用的底层功能
 	//=======================================
 
 	//获取需要传输的socket，然后自己处理io
-	QTcpSocket* FtpAccess(QString cmd, transfermode mode);
+	QTcpSocket* transferData(QString cmd, TransferMode mode,size_t offset = 0);
 
-
-protected:
-	bool sendCMD(QString buffer,char expect);
 	bool writeCMD(QString buffer);
 	bool readresp(char expect);
 
-	QTcpSocket* FtpOpenPasv(QString cmd, transfermode mode);
-	QTcpSocket* FtpOpenPort(QString cmd, transfermode mode);
+	//发送命令，并接收结果数字与expect进行判断
+	bool sendCMD(QString buffer, char expect);
 
-	size_t FtpAccessRead(QString cmd, transfermode mode, QIODevice* iofile);
-	size_t FtpAccessWrite(QString cmd, transfermode mode, QIODevice* iofile);
+Q_SIGNALS:
+	void onAbort(QPrivateSignal);
+
+protected:
+	//创建新连接,并绑定中止信号，若是SSL则返回SSL socket
+	virtual QTcpSocket* netSocket();
+
+	void bindSocket(QTcpSocket* socket);
+
+	QTcpSocket* openPasv(QString cmd, TransferMode mode, size_t offset = 0);
+	QTcpSocket* openPort(QString cmd, TransferMode mode, size_t offset = 0);
+
+	size_t transferRead(QString cmd, TransferMode mode, QIODevice* iofile);
+	size_t transferWrite(QString cmd, TransferMode mode, QIODevice* iofile);
 
 	//获取当前的Ftp编码
 	void updateFtpCode();
@@ -107,13 +119,12 @@ protected:
 	QByteArray toByte(const QString& content)const;
 
 protected:
-	QString m_username;
-	QString m_password;
-	short m_port;
-	QHostAddress m_address;
-	QByteArray m_response;
-	QTextCodec* m_code = nullptr;
-	size_t m_offset = 0;
-	connmode m_connmode = pasv;
-	QScopedPointer<QTcpSocket> m_socket;	//用于命令执行
+	QString _username;
+	QString _password;
+	short _port = 21;
+	QHostAddress _address;
+	QByteArray _response;
+	QTextCodec* _code = nullptr;
+	ConnectMode _connectMode = ConnectMode::pasv;
+	QScopedPointer<QTcpSocket> _cmdSocket;	//用于命令执行
 };
