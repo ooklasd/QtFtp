@@ -201,6 +201,15 @@ bool HFtp::cwd(QString path)
 	return sendCMD("CWD " + path,'2');
 }
 
+bool HFtp::mkd(QString path)
+{
+	if (writeCMD("MKD "+path))
+	{
+		return readresp({'2','5'});
+	}
+	return  false;
+}
+
 QString HFtp::pwd()
 {
 	if (!sendCMD("PWD", '2')) return{};
@@ -259,7 +268,7 @@ bool HFtp::writeCMD(QString buffer)
 	return iw > 0;
 }
 
-bool HFtp::readresp(char expect)
+bool HFtp::readresp(QVector<char> expect)
 {
 	if (!isLogin()) { qWarning() << "ftp without login"; return false; }
 	if (!_cmdSocket->waitForReadyRead())
@@ -295,7 +304,7 @@ bool HFtp::readresp(char expect)
 #ifdef _DEBUG
 	qDebug() <<"--> "<< toString(_response).trimmed();
 #endif // _DEBUG
-	return _response[0] == expect;
+	return expect.contains(_response[0]);
 }
 
 QTcpSocket* HFtp::openPasv(QString cmd, TransferMode mode, size_t offset /*= 0*/)
@@ -414,7 +423,7 @@ size_t HFtp::transferWrite(QString cmd, TransferMode mode, QIODevice* iofile)
 	if (!iofile->isOpen() && !iofile->open(QIODevice::ReadOnly))
 		return 0;
 
-	const int readUnit = 16 * 1024;
+	const int readUnit = 65536;
 	iofile->waitForReadyRead(30 * 1000);
 
 	auto readbuffer = iofile->read(readUnit);
@@ -430,11 +439,14 @@ size_t HFtp::transferWrite(QString cmd, TransferMode mode, QIODevice* iofile)
 		{
 			//¶ÔÆë¶ÁÈ¡
 			auto writecount = socket->write(readbuffer);
+			socket->waitForBytesWritten();
 			if (writecount <= 0) return sum;
 			sum += writecount;
 			iofile->waitForReadyRead(30 * 1000);
 			readbuffer = iofile->read(readUnit);
 		} while (readbuffer.size());
+		socket->flush();
+		socket->waitForBytesWritten();
 		socket->disconnected();
 	}
 	

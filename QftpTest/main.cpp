@@ -12,7 +12,6 @@ int main(int argc, char *argv[])
 	QCoreApplication a(argc, argv);
 
 	HFtp ftp;
-	ftp.setConnectMode(HFtp::port);
 	if (!ftp.connectFTP("192.168.0.108", 21))
 		return 0;
 
@@ -27,15 +26,17 @@ int main(int argc, char *argv[])
 	ASSERT(files2.size() == 141);
 	ASSERT(19701636 == ftp.size("./citra-setup-windows.exe"));
 	ASSERT(36939016 == ftp.size("/Visual Assist X 10.9 builds 2333/VA_X_Setup2333_0.exe"));
-	ASSERT(999624 == ftp.size(QString::fromLocal8Bit("/War3 ±ù·âÍõ×ù_1@580699.exe")));
+	ASSERT(999624 == ftp.size(QString::fromLocal8Bit("War3 ±ù·âÍõ×ù_1@580699.exe")));
 
-	QTemporaryFile file;
-	file.open();
+	QFile file("citra-setup-windows.exe");
+	file.open(QFile::ReadWrite);
 	ASSERT(ftp.get("citra-setup-windows.exe", file) == 19701636);
+	ASSERT(file.size() == 19701636);
 	
 	file.seek(0);
-	ftp.mkd("/temp/temp2");
-	ASSERT(ftp.put(file, "/temp/ftptemp.txt") == 19701636);
+	ASSERT(ftp.mkd("temp/temp2"));
+	ASSERT(ftp.put(file, "temp/ftptemp.txt") == 19701636);
+	ASSERT(19701636 == ftp.size("temp/ftptemp.txt"));
 
 	return 0;
 }

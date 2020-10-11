@@ -61,7 +61,7 @@ public:
 
 	bool cwd(QString path = "/");
 	bool cdup(){ return sendCMD("CDUP", '3'); }
-	bool mkd(QString path){ return sendCMD("MKD "+path, '2'); }
+	bool mkd(QString path);
 	QString pwd();
 
 	bool dele(QString file){ return sendCMD("DELE " + file, '3'); }
@@ -93,7 +93,8 @@ public:
 	QTcpSocket* transferData(QString cmd, TransferMode mode,size_t offset = 0);
 
 	bool writeCMD(QString buffer);
-	bool readresp(char expect);
+	bool readresp(char expect){ return readresp(QVector<char>{ expect }); }
+	bool readresp(QVector<char> expect);
 
 	//发送命令，并接收结果数字与expect进行判断
 	bool sendCMD(QString buffer, char expect);
